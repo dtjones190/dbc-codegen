@@ -200,7 +200,7 @@ pub fn codegen(config: Config<'_>, out: impl Write) -> Result<()> {
     writeln!(&mut w)?;
     
     writeln!(&mut w, "pub trait DbItem<T>{{")?;
-    writeln!(&mut w, "    fn get(&self) -> Option<&T>;")?;
+    writeln!(&mut w, "    fn get(&self) -> Option<T>;")?;
     writeln!(&mut w, "    fn publish(&mut self, value: T);")?;
     writeln!(&mut w, "}}")?;
 
@@ -210,7 +210,7 @@ pub fn codegen(config: Config<'_>, out: impl Write) -> Result<()> {
         let mut w = PadAdapter::wrap(&mut w);
         writeln!(
             w,
-            "fn get(&self) -> Option<&Messages> {{"
+            "fn get(&self) -> Option<Messages> {{"
             
         )?;
         {
@@ -1457,7 +1457,7 @@ fn render_db_item_impl(mut w: impl Write, msg: &Message) -> Result<()> {
         let mut w = PadAdapter::wrap(&mut w);
         writeln!(
             w,
-            "fn get(&self) -> Option<&{typ}> {{"
+            "fn get(&self) -> Option<{typ}> {{"
             
         )?;
         {
@@ -1467,7 +1467,7 @@ fn render_db_item_impl(mut w: impl Write, msg: &Message) -> Result<()> {
                 "if let Some(Some(Messages::{typ}(to_return))) = self.data.get({typ}::INDEX) {{"
             )?;
             let mut w = PadAdapter::wrap(&mut w);
-            writeln!(w, "Some(to_return)")?;
+            writeln!(w, "Some(to_return.clone())")?;
             writeln!(w, "}} else {{ None }}")?;
             
         }
