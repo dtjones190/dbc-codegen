@@ -204,7 +204,7 @@ pub fn codegen(config: Config<'_>, out: impl Write) -> Result<()> {
     writeln!(&mut w, "}}")?;
 
     writeln!(&mut w, "impl Default for MessageDatabase {{")?;
-    writeln!(&mut w, "    pub fn default() -> Self {{")?;
+    writeln!(&mut w, "    fn default() -> Self {{")?;
     writeln!(&mut w, "        Self::new()")?;
     writeln!(&mut w, "    }}")?;
     writeln!(&mut w, "}}")?;
