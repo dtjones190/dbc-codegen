@@ -173,14 +173,14 @@ pub fn codegen(config: Config<'_>, out: impl Write) -> Result<()> {
     writeln!(&mut w, "}}")?;
 
     writeln!(&mut w)?;
-    
-    writeln!(&mut w, "#[derive(Clone, Debug, Default)]")?;
+
+    writeln!(&mut w, "#[derive(Clone, Debug)]")?;
     writeln!(&mut w, "pub struct MessageDatabase {{")?;
     writeln!(&mut w, "    data: [Option<Messages>; MESSAGE_COUNT]")?;
     writeln!(&mut w, "}}")?;
 
     writeln!(&mut w)?;
-    
+
     writeln!(&mut w, "impl  MessageDatabase {{")?;
     writeln!(&mut w, "    pub fn new() -> Self {{")?;
     writeln!(&mut w, "        Self {{")?;
@@ -188,8 +188,14 @@ pub fn codegen(config: Config<'_>, out: impl Write) -> Result<()> {
     writeln!(&mut w, "        }}")?;
     writeln!(&mut w, "    }}")?;
     writeln!(&mut w)?;
-    writeln!(&mut w, "    pub fn get_index(&self, index: usize) -> Option<Messages> {{")?;
-    writeln!(&mut w, "        if let Some(value) = self.data.get(index) {{")?;
+    writeln!(
+        &mut w,
+        "    pub fn get_index(&self, index: usize) -> Option<Messages> {{"
+    )?;
+    writeln!(
+        &mut w,
+        "        if let Some(value) = self.data.get(index) {{"
+    )?;
     writeln!(&mut w, "            *value")?;
     writeln!(&mut w, "        }} else {{")?;
     writeln!(&mut w, "            None")?;
@@ -197,8 +203,14 @@ pub fn codegen(config: Config<'_>, out: impl Write) -> Result<()> {
     writeln!(&mut w, "    }}")?;
     writeln!(&mut w, "}}")?;
 
+    writeln!(&mut w, "impl Default for MessageDatabase {{")?;
+    writeln!(&mut w, "    pub fn default() -> Self {{")?;
+    writeln!(&mut w, "        Self::new()")?;
+    writeln!(&mut w, "    }}")?;
+    writeln!(&mut w, "}}")?;
+
     writeln!(&mut w)?;
-    
+
     writeln!(&mut w, "pub trait DbItem<T>{{")?;
     writeln!(&mut w, "    fn get(&self) -> Option<T>;")?;
     writeln!(&mut w, "    fn publish(&mut self, value: T);")?;
@@ -208,22 +220,14 @@ pub fn codegen(config: Config<'_>, out: impl Write) -> Result<()> {
     writeln!(&mut w, "impl DbItem<Messages> for MessageDatabase {{")?;
     {
         let mut w = PadAdapter::wrap(&mut w);
-        writeln!(
-            w,
-            "fn get(&self) -> Option<Messages> {{"
-            
-        )?;
+        writeln!(w, "fn get(&self) -> Option<Messages> {{")?;
         {
             let mut w = PadAdapter::wrap(&mut w);
             writeln!(w, "None")?;
         }
         writeln!(w, "}}")?;
-        
-        writeln!(
-            w,
-            "fn publish(&mut self, value: Messages) {{"
-            
-        )?;
+
+        writeln!(w, "fn publish(&mut self, value: Messages) {{")?;
         {
             let mut w = PadAdapter::wrap(&mut w);
             writeln!(w, "match value {{")?;
@@ -236,13 +240,12 @@ pub fn codegen(config: Config<'_>, out: impl Write) -> Result<()> {
                 )?;
             }
             writeln!(w, "}}")?;
-            
         }
         writeln!(w, "}}")?;
     }
     writeln!(w, "}}")?;
     writeln!(w)?;
-    
+
     render_dbc(&mut w, &config, &dbc).context("could not generate Rust code")?;
 
     writeln!(&mut w)?;
@@ -320,18 +323,18 @@ fn render_root_enum(mut w: impl Write, dbc: &DBC, config: &Config<'_>) -> Result
     writeln!(&mut w, "}}")?;
     writeln!(&mut w)?;
 
-    
-    writeln!(&mut w, "pub const MESSAGE_COUNT: usize = {};", get_relevant_messages(dbc).count())?;
+    writeln!(
+        &mut w,
+        "pub const MESSAGE_COUNT: usize = {};",
+        get_relevant_messages(dbc).count()
+    )?;
     writeln!(&mut w)?;
     writeln!(&mut w)?;
 
     writeln!(w, "impl GetIdAndData for Messages {{")?;
     {
         let mut w = PadAdapter::wrap(&mut w);
-        writeln!(
-            &mut w,
-            "fn get_id_and_data (&self) -> (u32, &[u8; 8]) {{",
-        )?;
+        writeln!(&mut w, "fn get_id_and_data (&self) -> (u32, &[u8; 8]) {{",)?;
         {
             let mut w = PadAdapter::wrap(&mut w);
             writeln!(&mut w)?;
@@ -356,7 +359,13 @@ fn render_root_enum(mut w: impl Write, dbc: &DBC, config: &Config<'_>) -> Result
     Ok(())
 }
 
-fn render_message(mut w: impl Write, config: &Config<'_>, msg: &Message, index: usize,  dbc: &DBC) -> Result<()> {
+fn render_message(
+    mut w: impl Write,
+    config: &Config<'_>,
+    msg: &Message,
+    index: usize,
+    dbc: &DBC,
+) -> Result<()> {
     writeln!(w, "/// {}", msg.message_name())?;
     writeln!(w, "///")?;
     writeln!(w, "/// - ID: {0} (0x{0:x})", msg.message_id().0)?;
@@ -394,7 +403,7 @@ fn render_message(mut w: impl Write, config: &Config<'_>, msg: &Message, index: 
             msg.message_id().0
         )?;
         writeln!(w)?;
-        
+
         let mut w = PadAdapter::wrap(&mut w);
 
         writeln!(w)?;
@@ -542,7 +551,7 @@ fn render_message(mut w: impl Write, config: &Config<'_>, msg: &Message, index: 
     render_db_index_impl(&mut w, msg, index)?;
 
     render_db_item_impl(&mut w, msg)?;
-    
+
     render_arbitrary(&mut w, config, msg)?;
 
     let enums_for_this_message = dbc.value_descriptions().iter().filter_map(|x| {
@@ -1413,16 +1422,10 @@ fn render_get_id_and_data_impl(mut w: impl Write, msg: &Message) -> Result<()> {
         writeln!(w, r##"impl GetIdAndData for {} {{"##, typ)?;
         {
             let mut w = PadAdapter::wrap(&mut w);
-            writeln!(
-                w,
-                "fn get_id_and_data(&self) -> (u32, &[u8; 8]) {{"
-            )?;
+            writeln!(w, "fn get_id_and_data(&self) -> (u32, &[u8; 8]) {{")?;
             {
                 let mut w = PadAdapter::wrap(&mut w);
-                writeln!(
-                    w,
-                    "(Self::MESSAGE_ID, self.raw())"
-                )?;
+                writeln!(w, "(Self::MESSAGE_ID, self.raw())")?;
             }
             writeln!(w, "}}")?;
         }
@@ -1438,11 +1441,7 @@ fn render_db_index_impl(mut w: impl Write, msg: &Message, index: usize) -> Resul
         writeln!(w, r##"impl DbIndex for {} {{"##, typ)?;
         {
             let mut w = PadAdapter::wrap(&mut w);
-            writeln!(
-                w,
-                "const INDEX: usize = {};",
-                index
-            )?;
+            writeln!(w, "const INDEX: usize = {};", index)?;
         }
         writeln!(w, "}}")?;
         writeln!(w)?;
@@ -1455,11 +1454,7 @@ fn render_db_item_impl(mut w: impl Write, msg: &Message) -> Result<()> {
     writeln!(w, r##"impl DbItem<{}> for MessageDatabase {{"##, typ)?;
     {
         let mut w = PadAdapter::wrap(&mut w);
-        writeln!(
-            w,
-            "fn get(&self) -> Option<{typ}> {{"
-            
-        )?;
+        writeln!(w, "fn get(&self) -> Option<{typ}> {{")?;
         {
             let mut w = PadAdapter::wrap(&mut w);
             writeln!(
@@ -1469,22 +1464,13 @@ fn render_db_item_impl(mut w: impl Write, msg: &Message) -> Result<()> {
             let mut w = PadAdapter::wrap(&mut w);
             writeln!(w, "Some(to_return.clone())")?;
             writeln!(w, "}} else {{ None }}")?;
-            
         }
         writeln!(w, "}}")?;
-        
-        writeln!(
-            w,
-            "fn publish(&mut self, value: {typ}) {{"
-            
-        )?;
+
+        writeln!(w, "fn publish(&mut self, value: {typ}) {{")?;
         {
             let mut w = PadAdapter::wrap(&mut w);
-            writeln!(
-                w,
-                "self.data[{typ}::INDEX] = Some(Messages::{typ}(value));"
-            )?;
-            
+            writeln!(w, "self.data[{typ}::INDEX] = Some(Messages::{typ}(value));")?;
         }
         writeln!(w, "}}")?;
     }
@@ -1492,7 +1478,6 @@ fn render_db_item_impl(mut w: impl Write, msg: &Message) -> Result<()> {
     writeln!(w)?;
     Ok(())
 }
-
 
 fn render_debug_impl(mut w: impl Write, config: &Config<'_>, msg: &Message) -> Result<()> {
     match &config.impl_debug {
