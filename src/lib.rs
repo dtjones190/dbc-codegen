@@ -161,7 +161,10 @@ pub fn codegen(config: Config<'_>, out: impl Write) -> Result<()> {
     writeln!(&mut w)?;
 
     writeln!(&mut w, "pub trait GetIdAndData{{")?;
-    writeln!(&mut w, "    fn get_id_and_data(&self) -> (u32, &[u8; 8]);")?;
+    writeln!(
+        &mut w,
+        "    fn get_id_and_data(&self) -> Result<(u32, [u8; 8]), CanError>;"
+    )?;
     writeln!(&mut w, "}}")?;
 
     writeln!(&mut w)?;
@@ -334,7 +337,10 @@ fn render_root_enum(mut w: impl Write, dbc: &DBC, config: &Config<'_>) -> Result
     writeln!(w, "impl GetIdAndData for Messages {{")?;
     {
         let mut w = PadAdapter::wrap(&mut w);
-        writeln!(&mut w, "fn get_id_and_data (&self) -> (u32, &[u8; 8]) {{",)?;
+        writeln!(
+            &mut w,
+            "fn get_id_and_data (&self) -> Result<(u32, [u8; 8]), CanError> {{",
+        )?;
         {
             let mut w = PadAdapter::wrap(&mut w);
             writeln!(&mut w)?;
@@ -388,7 +394,24 @@ fn render_message(
         config
             .impl_serde
             .fmt_attr(&mut w, "serde(with = \"serde_bytes\")")?;
-        writeln!(w, "raw: [u8; {}],", msg.message_size())?;
+
+        for signal in msg.signals() {
+            if dbc
+                .value_descriptions_for_signal(*msg.message_id(), signal.name())
+                .is_some()
+            {
+                let type_name = enum_name(msg, signal);
+                writeln!(w, "{}: {},", field_name(signal.name()), type_name)?;
+            } else {
+                writeln!(
+                    w,
+                    "{}: {},",
+                    field_name(signal.name()),
+                    signal_to_rust_type(signal)
+                )?;
+            }
+        }
+        // writeln!(w, "raw: [u8; {}],", msg.message_size())?;
     }
     writeln!(w, "}}")?;
     writeln!(w)?;
@@ -444,11 +467,19 @@ fn render_message(
                 if *signal.multiplexer_indicator() == MultiplexIndicator::Plain
                     || *signal.multiplexer_indicator() == MultiplexIndicator::Multiplexor
                 {
-                    Some(format!(
-                        "{}: {}",
-                        field_name(signal.name()),
-                        signal_to_rust_type(signal)
-                    ))
+                    if dbc
+                        .value_descriptions_for_signal(*msg.message_id(), signal.name())
+                        .is_some()
+                    {
+                        let type_name = enum_name(msg, signal);
+                        Some(format!("{}: {}", field_name(signal.name()), type_name))
+                    } else {
+                        Some(format!(
+                            "{}: {}",
+                            field_name(signal.name()),
+                            signal_to_rust_type(signal)
+                        ))
+                    }
                 } else {
                     None
                 }
@@ -461,22 +492,11 @@ fn render_message(
         )?;
         {
             let mut w = PadAdapter::wrap(&mut w);
-            writeln!(
-                &mut w,
-                "let {}res = Self {{ raw: [0u8; {}] }};",
-                if msg.signals().is_empty() { "" } else { "mut " },
-                msg.message_size()
-            )?;
-            for signal in msg.signals().iter() {
-                if *signal.multiplexer_indicator() == MultiplexIndicator::Plain {
-                    writeln!(&mut w, "res.set_{0}({0})?;", field_name(signal.name()))?;
-                }
-
-                if *signal.multiplexer_indicator() == MultiplexIndicator::Multiplexor {
-                    writeln!(&mut w, "res.set_{0}({0})?;", field_name(signal.name()))?;
-                }
+            writeln!(&mut w, "Ok(Self {{",)?;
+            for signal in msg.signals() {
+                writeln!(&mut w, "{},", field_name(signal.name()),)?
             }
-            writeln!(&mut w, "Ok(res)")?;
+            writeln!(&mut w, "}})",)?;
         }
         writeln!(&mut w, "}}")?;
         writeln!(w)?;
@@ -484,12 +504,20 @@ fn render_message(
         writeln!(&mut w, "/// Access message payload raw value")?;
         writeln!(
             &mut w,
-            "pub fn raw(&self) -> &[u8; {}] {{",
+            "pub fn raw(&self) -> Result<[u8; {}], CanError> {{",
             msg.message_size()
         )?;
         {
             let mut w = PadAdapter::wrap(&mut w);
-            writeln!(&mut w, "&self.raw")?;
+            writeln!(&mut w, "let mut buff = [0; {}];", msg.message_size())?;
+            for signal in msg.signals() {
+                writeln!(
+                    &mut w,
+                    "Self::set_{0}_buff(self.{0}.into(), &mut buff)?;",
+                    field_name(signal.name())
+                )?;
+            }
+            writeln!(&mut w, "Ok(buff)")?;
         }
         writeln!(&mut w, "}}")?;
         writeln!(w)?;
@@ -537,7 +565,16 @@ fn render_message(
                 "raw.copy_from_slice(&payload[..{}]);",
                 msg.message_size()
             )?;
-            writeln!(&mut w, "Ok(Self {{ raw }})")?;
+            writeln!(&mut w, "Ok(Self {{ ")?;
+            for signal in msg.signals() {
+                writeln!(
+                    &mut w,
+                    "{}: Self::{}_buff(&raw),",
+                    field_name(signal.name()),
+                    field_name(signal.name()),
+                )?;
+            }
+            writeln!(&mut w, "}})")?;
         }
         writeln!(&mut w, "}}")?;
     }
@@ -606,6 +643,7 @@ fn render_signal(
     writeln!(w, "/// - Unit: {:?}", signal.unit())?;
     writeln!(w, "/// - Receivers: {}", signal.receivers().join(", "))?;
     writeln!(w, "#[inline(always)]")?;
+
     if let Some(variants) = dbc.value_descriptions_for_signal(*msg.message_id(), signal.name()) {
         let type_name = enum_name(msg, signal);
 
@@ -613,6 +651,20 @@ fn render_signal(
             w,
             "pub fn {}(&self) -> {} {{",
             field_name(signal.name()),
+            type_name
+        )?;
+        {
+            let mut w = PadAdapter::wrap(&mut w);
+            writeln!(&mut w, "self.{}", field_name(signal.name()))?;
+        }
+        writeln!(&mut w, "}}")?;
+        writeln!(w)?;
+
+        writeln!(
+            w,
+            "pub fn {}_buff(raw: &[u8; {}]) -> {} {{",
+            field_name(signal.name()),
+            msg.message_size(),
             type_name,
         )?;
         {
@@ -627,7 +679,7 @@ fn render_signal(
                     let (start_bit, end_bit) = le_start_end_bit(signal, msg)?;
 
                     format!(
-                        "self.raw.view_bits::<Lsb0>()[{start}..{end}].load_le::<{typ}>()",
+                        "raw.view_bits::<Lsb0>()[{start}..{end}].load_le::<{typ}>()",
                         typ = signal_to_rust_uint(signal),
                         start = start_bit,
                         end = end_bit,
@@ -637,7 +689,7 @@ fn render_signal(
                     let (start_bit, end_bit) = be_start_end_bit(signal, msg)?;
 
                     format!(
-                        "self.raw.view_bits::<Msb0>()[{start}..{end}].load_be::<{typ}>()",
+                        "raw.view_bits::<Msb0>()[{start}..{end}].load_be::<{typ}>()",
                         typ = signal_to_rust_uint(signal),
                         start = start_bit,
                         end = end_bit
@@ -662,7 +714,7 @@ fn render_signal(
                 }
                 writeln!(
                     &mut w,
-                    "_ => {}::_Other(self.{}_raw()),",
+                    "_ => {}::_Other(Self::{}_raw_buff(raw)),",
                     type_name,
                     field_name(signal.name())
                 )?;
@@ -680,7 +732,20 @@ fn render_signal(
         )?;
         {
             let mut w = PadAdapter::wrap(&mut w);
-            writeln!(&mut w, "self.{}_raw()", field_name(signal.name()))?;
+            writeln!(&mut w, "self.{}", field_name(signal.name()))?;
+        }
+        writeln!(&mut w, "}}")?;
+        writeln!(w)?;
+        writeln!(
+            w,
+            "fn {}_buff(raw: &[u8; {}]) -> {} {{",
+            field_name(signal.name()),
+            msg.message_size(),
+            signal_to_rust_type(signal)
+        )?;
+        {
+            let mut w = PadAdapter::wrap(&mut w);
+            writeln!(&mut w, "Self::{}_raw_buff(raw)", field_name(signal.name()))?;
         }
         writeln!(&mut w, "}}")?;
         writeln!(w)?;
@@ -697,8 +762,9 @@ fn render_signal(
     writeln!(w, "#[inline(always)]")?;
     writeln!(
         w,
-        "pub fn {}_raw(&self) -> {} {{",
+        "fn {}_raw_buff(raw: &[u8; {}]) -> {} {{",
         field_name(signal.name()),
+        msg.message_size(),
         signal_to_rust_type(signal)
     )?;
     {
@@ -724,18 +790,63 @@ fn render_set_signal(
 
     // To avoid accidentially changing the multiplexor value without changing
     // the signals accordingly this fn is kept private for multiplexors.
-    let visibility = if *signal.multiplexer_indicator() == MultiplexIndicator::Multiplexor {
-        ""
-    } else {
-        "pub "
-    };
+    // let visibility = if *signal.multiplexer_indicator() == MultiplexIndicator::Multiplexor {
+    //     ""
+    // } else {
+    //     "pub "
+    // };
+
+    // writeln!(
+    //     w,
+    //     "{}fn set_{}(&mut self, value: {}) -> Result<(), CanError> {{",
+    //     visibility,
+    //     field_name(signal.name()),
+    //     signal_to_rust_type(signal),
+    // )?;
+
+    // {
+    //     let mut w = PadAdapter::wrap(&mut w);
+
+    //     if signal.signal_size != 1 {
+    //         if let FeatureConfig::Gated(gate) = config.check_ranges {
+    //             writeln!(w, r##"#[cfg(feature = {gate:?})]"##)?;
+    //         }
+
+    //         if let FeatureConfig::Gated(..) | FeatureConfig::Always = config.check_ranges {
+    //             writeln!(
+    //                 w,
+    //                 r##"if value < {min}_{typ} || {max}_{typ} < value {{"##,
+    //                 typ = signal_to_rust_type(signal),
+    //                 min = signal.min(),
+    //                 max = signal.max(),
+    //             )?;
+    //             {
+    //                 let mut w = PadAdapter::wrap(&mut w);
+    //                 writeln!(
+    //                     w,
+    //                     r##"return Err(CanError::ParameterOutOfRange {{ message_id: {message_id} }});"##,
+    //                     message_id = msg.message_id().0,
+    //                 )?;
+    //             }
+    //             writeln!(w, r"}}")?;
+    //         }
+    //     }
+    //     writeln!(w,
+    //         "self.{} = value;",
+    //         field_name(signal.name())
+    //     )?;
+    //     writeln!(w, "Ok(())")?;
+    // }
+
+    // writeln!(&mut w, "}}")?;
+    // writeln!(w)?;
 
     writeln!(
         w,
-        "{}fn set_{}(&mut self, value: {}) -> Result<(), CanError> {{",
-        visibility,
+        "fn set_{}_buff(value: {}, raw: &mut [u8; {}]) -> Result<(), CanError> {{",
         field_name(signal.name()),
-        signal_to_rust_type(signal)
+        signal_to_rust_type(signal),
+        msg.message_size(),
     )?;
 
     {
@@ -792,9 +903,9 @@ fn render_set_signal_multiplexer(
     {
         let mut w = PadAdapter::wrap(&mut w);
 
-        writeln!(&mut w, "let b0 = BitArray::<_, LocalBits>::new(self.raw);")?;
+        writeln!(&mut w, "let b0 = BitArray::<_, LocalBits>::new(raw);")?;
         writeln!(&mut w, "let b1 = BitArray::<_, LocalBits>::new(value.raw);")?;
-        writeln!(&mut w, "self.raw = b0.bitor(b1).into_inner();")?;
+        writeln!(&mut w, "raw = b0.bitor(b1).into_inner();")?;
         writeln!(
             &mut w,
             "self.set_{}({})?;",
@@ -966,7 +1077,7 @@ fn signal_from_payload(mut w: impl Write, signal: &Signal, msg: &Message) -> Res
             let (start_bit, end_bit) = le_start_end_bit(signal, msg)?;
 
             format!(
-                "self.raw.view_bits::<Lsb0>()[{start}..{end}].load_le::<{typ}>()",
+                "raw.view_bits::<Lsb0>()[{start}..{end}].load_le::<{typ}>()",
                 typ = signal_to_rust_uint(signal),
                 start = start_bit,
                 end = end_bit,
@@ -976,7 +1087,7 @@ fn signal_from_payload(mut w: impl Write, signal: &Signal, msg: &Message) -> Res
             let (start_bit, end_bit) = be_start_end_bit(signal, msg)?;
 
             format!(
-                "self.raw.view_bits::<Msb0>()[{start}..{end}].load_be::<{typ}>()",
+                "raw.view_bits::<Msb0>()[{start}..{end}].load_be::<{typ}>()",
                 typ = signal_to_rust_uint(signal),
                 start = start_bit,
                 end = end_bit
@@ -1081,7 +1192,7 @@ fn signal_to_payload(mut w: impl Write, signal: &Signal, msg: &Message) -> Resul
             let (start_bit, end_bit) = le_start_end_bit(signal, msg)?;
             writeln!(
                 &mut w,
-                r#"self.raw.view_bits_mut::<Lsb0>()[{start_bit}..{end_bit}].store_le(value);"#,
+                r#"raw.view_bits_mut::<Lsb0>()[{start_bit}..{end_bit}].store_le(value);"#,
                 start_bit = start_bit,
                 end_bit = end_bit,
             )?;
@@ -1090,7 +1201,7 @@ fn signal_to_payload(mut w: impl Write, signal: &Signal, msg: &Message) -> Resul
             let (start_bit, end_bit) = be_start_end_bit(signal, msg)?;
             writeln!(
                 &mut w,
-                r#"self.raw.view_bits_mut::<Msb0>()[{start_bit}..{end_bit}].store_be(value);"#,
+                r#"raw.view_bits_mut::<Msb0>()[{start_bit}..{end_bit}].store_be(value);"#,
                 start_bit = start_bit,
                 end_bit = end_bit,
             )?;
@@ -1422,10 +1533,13 @@ fn render_get_id_and_data_impl(mut w: impl Write, msg: &Message) -> Result<()> {
         writeln!(w, r##"impl GetIdAndData for {} {{"##, typ)?;
         {
             let mut w = PadAdapter::wrap(&mut w);
-            writeln!(w, "fn get_id_and_data(&self) -> (u32, &[u8; 8]) {{")?;
+            writeln!(
+                w,
+                "fn get_id_and_data(&self) -> Result<(u32, [u8; 8]), CanError> {{"
+            )?;
             {
                 let mut w = PadAdapter::wrap(&mut w);
-                writeln!(w, "(Self::MESSAGE_ID, self.raw())")?;
+                writeln!(w, "Ok((Self::MESSAGE_ID, self.raw()?))")?;
             }
             writeln!(w, "}}")?;
         }
@@ -1517,7 +1631,7 @@ fn render_debug_impl(mut w: impl Write, config: &Config<'_>, msg: &Message) -> R
             writeln!(w, r#"}} else {{"#)?;
             {
                 let mut w = PadAdapter::wrap(&mut w);
-                writeln!(w, r#"f.debug_tuple("{}").field(&self.raw).finish()"#, typ)?;
+                writeln!(w, r#"f.debug_tuple("{}").field(&self.raw()).finish()"#, typ)?;
             }
             writeln!(w, "}}")?;
         }
