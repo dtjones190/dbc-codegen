@@ -860,20 +860,27 @@ fn render_set_signal(
             if let FeatureConfig::Gated(..) | FeatureConfig::Always = config.check_ranges {
                 writeln!(
                     w,
-                    r##"if value < {min}_{typ} || {max}_{typ} < value {{"##,
+                    r##"let = value.clamp({min}_{typ}, {max}_{typ});"##,
                     typ = signal_to_rust_type(signal),
                     min = signal.min(),
                     max = signal.max(),
                 )?;
-                {
-                    let mut w = PadAdapter::wrap(&mut w);
-                    writeln!(
-                        w,
-                        r##"return Err(CanError::ParameterOutOfRange {{ message_id: {message_id} }});"##,
-                        message_id = msg.message_id().0,
-                    )?;
-                }
-                writeln!(w, r"}}")?;
+                // writeln!(
+                //     w,
+                //     r##"if value < {min}_{typ} || {max}_{typ} < value {{"##,
+                //     typ = signal_to_rust_type(signal),
+                //     min = signal.min(),
+                //     max = signal.max(),
+                // )?;
+                // {
+                //     let mut w = PadAdapter::wrap(&mut w);
+                //     writeln!(
+                //         w,
+                //         r##"return Err(CanError::ParameterOutOfRange {{ message_id: {message_id} }});"##,
+                //         message_id = msg.message_id().0,
+                //     )?;
+                // }
+                // writeln!(w, r"}}")?;
             }
         }
         signal_to_payload(&mut w, signal, msg).context("signal to payload")?;
