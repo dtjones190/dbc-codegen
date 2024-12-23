@@ -860,7 +860,7 @@ fn render_set_signal(
             if let FeatureConfig::Gated(..) | FeatureConfig::Always = config.check_ranges {
                 writeln!(
                     w,
-                    r##"let = value.clamp({min}_{typ}, {max}_{typ});"##,
+                    r##"let value = value.clamp({min}_{typ}, {max}_{typ});"##,
                     typ = signal_to_rust_type(signal),
                     min = signal.min(),
                     max = signal.max(),
