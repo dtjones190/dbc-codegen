@@ -540,6 +540,34 @@ fn render_message(
         writeln!(&mut w, "}}")?;
         writeln!(w)?;
 
+        writeln!(
+            &mut w,
+            "/// Construct new Message::{} from values",
+            msg.message_name()
+        )?;
+        writeln!(
+            &mut w,
+            "pub fn new_msg({}) -> Result<Messages, CanError> {{",
+            args.join(", ")
+        )?;
+        {
+            let mut w = PadAdapter::wrap(&mut w);
+            writeln!(
+                &mut w,
+                "Ok(Messages::{}(Self {{",
+                type_name(msg.message_name())
+            )?;
+            for signal in msg.signals().iter().filter(|s| {
+                (*s.multiplexer_indicator() == MultiplexIndicator::Plain)
+                    | (*s.multiplexer_indicator() == MultiplexIndicator::Multiplexor)
+            }) {
+                writeln!(&mut w, "{},", field_name(signal.name()),)?
+            }
+            writeln!(&mut w, "}}))",)?;
+        }
+        writeln!(&mut w, "}}")?;
+        writeln!(w)?;
+
         writeln!(&mut w, "/// Access message payload raw value")?;
         writeln!(
             &mut w,
