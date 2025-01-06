@@ -1821,6 +1821,32 @@ fn render_multiplexor_enums(
         }
         writeln!(&mut w, "}}")?;
 
+        writeln!(
+            &mut w,
+            "/// Construct new Message::{} from values",
+            msg.message_name()
+        )?;
+        writeln!(
+            &mut w,
+            "pub fn new_msg({}) -> Result<Messages, CanError> {{",
+            args.join(", ")
+        )?;
+        {
+            let mut w = PadAdapter::wrap(&mut w);
+            writeln!(
+                &mut w,
+                "Ok(Messages::{0}({0}::new({1}::{2}(Self {{",
+                type_name(msg.message_name()),
+                multiplex_enum_name(msg, multiplexor_signal)?,
+                multiplexed_enum_variant_wrapper_name(**switch_index),
+            )?;
+            for signal in multiplexed_signals {
+                writeln!(&mut w, "    {},", field_name(signal.name()),)?
+            }
+            writeln!(&mut w, "}}))?))",)?;
+        }
+        writeln!(&mut w, "}}")?;
+
         writeln!(w, "#[inline(always)]")?;
         writeln!(
             w,
