@@ -409,7 +409,7 @@ fn render_message(
             } else {
                 writeln!(
                     w,
-                    "{}: {},",
+                    "pub {}: {},",
                     field_name(signal.name()),
                     signal_to_rust_type(signal)
                 )?;
