@@ -429,7 +429,7 @@ fn render_message(
             } else {
                 writeln!(
                     w,
-                    "{}: {},",
+                    "pub {}: {},",
                     field_name(signal.name()),
                     multiplex_enum_name(msg, signal)?,
                 )?;
