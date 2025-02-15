@@ -391,9 +391,6 @@ fn render_message(
     writeln!(w, "pub struct {} {{", type_name(msg.message_name()))?;
     {
         let mut w = PadAdapter::wrap(&mut w);
-        config
-            .impl_serde
-            .fmt_attr(&mut w, "serde(with = \"serde_bytes\")")?;
 
         for signal in msg
             .signals()
@@ -1761,9 +1758,6 @@ fn render_multiplexor_enums(
         writeln!(w, "pub struct {} {{", struct_name)?;
         {
             let mut w = PadAdapter::wrap(&mut w);
-            config
-                .impl_serde
-                .fmt_attr(&mut w, "serde(with = \"serde_bytes\")")?;
 
             for signal in multiplexed_signals {
                 if dbc
