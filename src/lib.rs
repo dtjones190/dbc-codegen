@@ -388,6 +388,7 @@ fn render_message(
     writeln!(w, "#[derive(Clone, Copy)]")?;
     config.impl_serde.fmt_attr(&mut w, "derive(Serialize)")?;
     config.impl_serde.fmt_attr(&mut w, "derive(Deserialize)")?;
+    config.impl_serde.fmt_attr(&mut w, format!("serde(rename = \"{}\")", msg.message_name()))?;
     writeln!(w, "pub struct {} {{", type_name(msg.message_name()))?;
     {
         let mut w = PadAdapter::wrap(&mut w);
@@ -397,6 +398,7 @@ fn render_message(
             .iter()
             .filter(|s| (*s.multiplexer_indicator() == MultiplexIndicator::Plain))
         {
+            config.impl_serde.fmt_attr(&mut w, format!("serde(rename = \"{}\")", signal.name()))?;
             if dbc
                 .value_descriptions_for_signal(*msg.message_id(), signal.name())
                 .is_some()
@@ -417,6 +419,7 @@ fn render_message(
             .iter()
             .filter(|s| (*s.multiplexer_indicator() == MultiplexIndicator::Multiplexor))
         {
+            config.impl_serde.fmt_attr(&mut w, format!("serde(rename = \"{}\")", signal.name()))?;
             if dbc
                 .value_descriptions_for_signal(*msg.message_id(), signal.name())
                 .is_some()
@@ -1760,6 +1763,7 @@ fn render_multiplexor_enums(
             let mut w = PadAdapter::wrap(&mut w);
 
             for signal in multiplexed_signals {
+                config.impl_serde.fmt_attr(&mut w, format!("serde(rename = \"{}\")", signal.name()))?;
                 if dbc
                     .value_descriptions_for_signal(*msg.message_id(), signal.name())
                     .is_some()
