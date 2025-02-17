@@ -286,6 +286,7 @@ fn render_root_enum(mut w: impl Write, dbc: &DBC, config: &Config<'_>) -> Result
         let mut w = PadAdapter::wrap(&mut w);
         for msg in get_relevant_messages(dbc) {
             writeln!(w, "/// {}", msg.message_name())?;
+            config.impl_serde.fmt_attr(&mut w, format!("serde(rename = \"{}\")", msg.message_name()))?;
             writeln!(w, "{0}({0}),", type_name(msg.message_name()))?;
         }
     }
