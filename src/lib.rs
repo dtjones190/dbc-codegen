@@ -1272,6 +1272,7 @@ fn write_enum(
     {
         let mut w = PadAdapter::wrap(&mut w);
         for variant in variants {
+            config.impl_serde.fmt_attr(&mut w, format!("serde(rename = \"{}\")", variant.b()))?;
             writeln!(w, "{},", enum_variant_name(variant.b()))?;
         }
         writeln!(w, "_Other({}),", signal_rust_type)?;
